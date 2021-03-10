@@ -152,8 +152,6 @@ func main() {
 	log.Infoln("Starting es-snapshot-exporter", version.Info())
 	log.Infoln("Build context", version.BuildContext())
 
-	http.Handle(*metricsPath, promhttp.Handler())
-
 	log.Infoln("Starting server on", *listenAddress)
 	log.Fatal(http.ListenAndServe(*listenAddress, nil))
 

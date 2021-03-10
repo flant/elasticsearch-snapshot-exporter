@@ -8,7 +8,7 @@ RUN apt-get update \
             curl
 
 ENV VERSION 0.1.0
-ENV DOWNLOAD_URL https://github.com/flant/elasticsearch-snapshot/exporter/es-snapshot-exporter/releases/download/${VERSION}/es-snapshot-exporter-linux-amd64
+ENV DOWNLOAD_URL https://github.com/flant/elasticsearch-snapshot-exporter/releases/download/${VERSION}/es-snapshot-exporter-linux-amd64
 
 RUN curl -fsSL "$DOWNLOAD_URL" -o /es-snapshot-exporter
 

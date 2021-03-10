@@ -13,9 +13,6 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
-    - name: GitHub Environment Variables Action
-      uses: FranzDiebold/github-env-vars-action@v2.1.0
-
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
@@ -26,6 +23,8 @@ jobs:
 
     - name: Build
       env:
+        GOOS: linux
+        GOARCH: amd64
         PREFIX: build
       run: make
 

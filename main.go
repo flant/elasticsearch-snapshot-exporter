@@ -3,17 +3,17 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/prometheus/common/log"
 	"github.com/prometheus/common/version"
-	"github.com/tidwall/gjson"
+	log "github.com/sirupsen/logrus"
+
+	"github.com/robfig/cron/v3"
+
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -28,8 +28,6 @@ type prometheusVersion struct {
 	GoVersion string `json:"goVersion"`
 }
 
-const namespace = "elasticsearch"
-
 var (
 	listenAddress = kingpin.Flag(
 		"telemetry.addr",
@@ -39,87 +37,51 @@ var (
 		"telemetry.path",
 		"URL path for surfacing collected metrics.",
 	).Default("/metrics").String()
-	dataDir = kingpin.Flag(
-		"data.dir",
-		"Directory containing json files with snapshot status",
-	).Default("/data").String()
+	logLevel = kingpin.Flag("log.level",
+		"Only log messages with the given severity or above. Valid levels: [debug, info, warn, error, fatal]",
+	).Default("info").Enum("debug", "info", "warn", "error", "fatal")
+	logFormat = kingpin.Flag("log.format",
+		"Set the log format. Valid formats: [json, text]",
+	).Default("json").Enum("json", "text")
 
-	labels = []string{"repository", "state", "snapshot", "prefix"}
+	schedule = kingpin.Flag("schedule",
+		"Cron job schedule",
+	).Default("0 14 * * *").String()
 
-	snapshotSize = prometheus.NewDesc(
-		prometheus.BuildFQName(namespace, "snapshot_stats", "size_in_bytes_total"),
-		"Total size of files that are referenced by the snapshot",
-		labels, nil,
-	)
+	endpoint = kingpin.Flag("endpoint",
+		"Elasticsearch URL. ",
+	).Default("http://localhost:9200").String()
+	cacert = kingpin.Flag("cacert",
+		"Elasticsearch CA certificate",
+	).PlaceHolder("/etc/ssl/certs/elk-root-ca.pem").ExistingFile()
+	insecure = kingpin.Flag("insecure",
+		"Allow insecure server connections when using SSL",
+	).Default("false").Bool()
+	repository = kingpin.Flag("repository",
+		"Elasticsearch backup repository name",
+	).Default("s3-backup").String()
+	threads = kingpin.Flag("threads",
+		"Number of concurrent http requests to elasticsearch",
+	).Default("1").Int()
+
+	snapshotSize = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace:   "elasticsearch",
+		Subsystem:   "snapshot_stats",
+		Name:        "size_in_bytes_total",
+		Help:        "Total size of files that are referenced by the snapshot",
+		ConstLabels: nil,
+	}, []string{"repository", "state", "snapshot", "prefix"})
 )
 
-type Collector struct{}
-
-func (e *Collector) Describe(ch chan<- *prometheus.Desc) {
-	ch <- snapshotSize
-}
-
-func (e *Collector) Collect(ch chan<- prometheus.Metric) {
-	err := filepath.Walk(*dataDir,
-		func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				log.Fatalf("Error reading data.dir: %v", err)
-			}
-			if filepath.Ext(path) == ".json" {
-				log.Debugf("Processing file %v. Size: %v", path, info.Size())
-				f, err := ioutil.ReadFile(path)
-				if err != nil {
-					return err
-				}
-				for _, snapshot := range gjson.GetBytes(f, "snapshots").Array() {
-					labelValues := getLabelValues(&snapshot)
-					ch <- prometheus.MustNewConstMetric(
-						snapshotSize, prometheus.GaugeValue, snapshot.Get("stats.total.size_in_bytes").Float(),
-						labelValues...,
-					)
-				}
-			}
-			return nil
-		})
-
-	if err != nil {
-		log.Error(err)
-	}
-}
-
-func getLabelValues(snapshot *gjson.Result) []string {
-	var values []string
-	for _, label := range labels {
-		if label == "prefix" {
-			values = append(values, strings.Split(snapshot.Get("snapshot").String(), "-")[0])
-			continue
-		}
-		values = append(values, snapshot.Get(label).String())
-	}
-
-	return values
-}
-
-func healthCheck(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	_, err := fmt.Fprintln(w, `{"status":"ok"}`)
-	if err != nil {
-		log.Debugf("Failed to write to stream: %v", err)
-	}
-}
-
 func main() {
-	log.AddFlags(kingpin.CommandLine)
 	kingpin.Version(version.Print("es-snapshot-exporter"))
 	kingpin.HelpFlag.Short('h')
 
 	kingpin.Parse()
+	setLogLevel(*logLevel)
+	setLogFormat(*logFormat)
 
-	if _, err := os.Stat(*dataDir); err != nil {
-		log.Fatalf("Error reading data.dir: %v", err)
-	}
-
-	prometheus.MustRegister(&Collector{})
+	prometheus.MustRegister(snapshotSize)
 
 	http.Handle(*metricsPath, promhttp.Handler())
 	http.HandleFunc("/healthz", healthCheck)
@@ -149,10 +111,105 @@ func main() {
 </html>`))
 	})
 
-	log.Infoln("Starting es-snapshot-exporter", version.Info())
-	log.Infoln("Build context", version.BuildContext())
+	log.Info("Starting es-snapshot-exporter", version.Info())
+	log.Info("Build context", version.BuildContext())
 
-	log.Infoln("Starting server on", *listenAddress)
+	go func() {
+		log.Infof("Fetching data from: %s", *endpoint)
+		if err := getMetrics(); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	c := cron.New()
+	if _, err := c.AddFunc(*schedule, func() { getMetrics() }); err != nil {
+		log.Fatal(err)
+	}
+	c.Start()
+
+	log.Info("Starting server on", *listenAddress)
 	log.Fatal(http.ListenAndServe(*listenAddress, nil))
 
+}
+
+func getMetrics() error {
+	client, err := NewClient([]string{*endpoint}, *cacert, *repository, *insecure)
+	if err != nil {
+		return fmt.Errorf("error creating the client: %s", err)
+	}
+
+	s, err := client.GetSnapshots()
+	if err != nil {
+		return fmt.Errorf("error fetching snapshots: %s", err)
+	}
+
+	var wg sync.WaitGroup
+	ch := make(chan string)
+	for i := 0; i < *threads; i++ {
+		wg.Add(1)
+		go func() {
+			for s := range ch {
+				snap, err := client.GetSnapshot(s)
+				if err != nil {
+					log.Error(err)
+					continue
+				}
+				snapshotSize.WithLabelValues(
+					snap.Repository,
+					snap.State,
+					snap.Snapshot,
+					strings.Split(snap.Snapshot, "-")[0],
+				).Set(float64(snap.Stats.Total.SizeInBytes))
+			}
+		}()
+	}
+
+	for _, s := range s {
+		ch <- s
+	}
+
+	close(ch)
+	wg.Wait()
+
+	log.Info("Finished fetching snapshot info")
+
+	return nil
+}
+
+func healthCheck(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_, err := fmt.Fprintln(w, `{"status":"ok"}`)
+	if err != nil {
+		log.Debugf("Failed to write to stream: %v", err)
+	}
+}
+
+func setLogLevel(level string) error {
+	lvl, err := log.ParseLevel(level)
+	if err != nil {
+		return err
+	}
+	log.SetLevel(lvl)
+
+	return nil
+}
+
+func setLogFormat(format string) error {
+	var formatter log.Formatter
+
+	switch format {
+	case "text":
+		formatter = &log.TextFormatter{
+			DisableColors: true,
+			FullTimestamp: true,
+		}
+	case "json":
+		formatter = &log.JSONFormatter{}
+	default:
+		return fmt.Errorf("invalid log format: %s", format)
+	}
+
+	log.SetFormatter(formatter)
+
+	return nil
 }

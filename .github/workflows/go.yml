@@ -13,20 +13,29 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
+    - name: GitHub Environment Variables Action
+      uses: FranzDiebold/github-env-vars-action@v2.1.0
+
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: 1.15
-    
+        go-version: 1.16
+
     - name: Install promu package
-      run: go get -v github.com/prometheus/promu
+      run: go install -v github.com/prometheus/promu
 
     - name: Build
-      env:
-        GOOS: linux
-        GOARCH: amd64
-        PREFIX: build
-      run: make
+      run: |
+        for GOOS in linux; do
+          for GOARCH in 386 amd64; do
+            echo "Building $GOOS-$GOARCH"
+            export GOOS=$GOOS
+            export GOARCH=$GOARCH
+            promu build -v --prefix=build
+            mv build/es-snapshot-exporter build/es-snapshot-exporter-${GOARCH}-${GOOS}
+          done
+        done
+        cd build/ && sha256sum -b * > sha256sums
 
     - name: Release
       uses: softprops/action-gh-release@v1

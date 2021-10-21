@@ -4,8 +4,6 @@ on:
   push:
     tags:
       - '**'
-    branches:
-      - '**'
 
 jobs:
 
@@ -38,12 +36,6 @@ jobs:
           done
         done
         cd build/ && sha256sum -b * > sha256sums
-
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v2
-      with:
-        path: build/*
-        retention-days: 14
 
     - name: Release
       uses: softprops/action-gh-release@v1

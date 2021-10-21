@@ -24,7 +24,7 @@ jobs:
         go-version: 1.16
 
     - name: Install promu package
-      run: go install -v github.com/prometheus/promu
+      run: go get -v github.com/prometheus/promu
 
     - name: Build
       run: |

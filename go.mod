@@ -5,7 +5,7 @@ go 1.15
 require (
 	github.com/alecthomas/units v0.0.0-20210927113745-59d0afb8317a // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
-	github.com/elastic/go-elasticsearch/v7 v7.15.1
+	github.com/elastic/go-elasticsearch/v7 v7.10.0
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/prometheus/client_golang v1.11.0
 	github.com/prometheus/common v0.32.1

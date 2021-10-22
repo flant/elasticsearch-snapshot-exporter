@@ -127,7 +127,7 @@ func main() {
 	c.Start()
 	go func() {
 		log.Info("Fetching data from: ", *address)
-		c.Entry(e).Job.Run()
+		c.Entry(e).WrappedJob.Run()
 	}()
 
 	log.Info("Starting server on ", *listenAddress)

@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/version"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 
 	"github.com/robfig/cron/v3"
 
@@ -30,6 +30,8 @@ type prometheusVersion struct {
 }
 
 var (
+	log = logrus.New()
+
 	listenAddress = kingpin.Flag("telemetry.addr",
 		"Listen on host:port.",
 	).Default(":9141").String()
@@ -79,8 +81,12 @@ func main() {
 
 	kingpin.Parse()
 
-	setLogLevel(*logLevel)
-	setLogFormat(*logFormat)
+	if err := setLogLevel(*logLevel); err != nil {
+		log.Fatal(err)
+	}
+	if err := setLogFormat(*logFormat); err != nil {
+		log.Fatal(err)
+	}
 
 	prometheus.MustRegister(snapshotSize)
 
@@ -122,8 +128,8 @@ func main() {
 	log.Infof("Starting cron with schedule: \"%s\"", *schedule)
 	c := cron.New(
 		cron.WithChain(
-			cron.SkipIfStillRunning(logrusr.New(log.New())),
-			cron.Recover(logrusr.New(log.New())),
+			cron.SkipIfStillRunning(logrusr.New(log)),
+			cron.Recover(logrusr.New(log)),
 		),
 	)
 	e, err := c.AddFunc(*schedule, func() { getMetrics() })
@@ -226,7 +232,7 @@ func healthCheck(w http.ResponseWriter, r *http.Request) {
 }
 
 func setLogLevel(level string) error {
-	lvl, err := log.ParseLevel(level)
+	lvl, err := logrus.ParseLevel(level)
 	if err != nil {
 		return err
 	}
@@ -236,16 +242,16 @@ func setLogLevel(level string) error {
 }
 
 func setLogFormat(format string) error {
-	var formatter log.Formatter
+	var formatter logrus.Formatter
 
 	switch format {
 	case "text":
-		formatter = &log.TextFormatter{
+		formatter = &logrus.TextFormatter{
 			DisableColors: true,
 			FullTimestamp: true,
 		}
 	case "json":
-		formatter = &log.JSONFormatter{}
+		formatter = &logrus.JSONFormatter{}
 	default:
 		return fmt.Errorf("invalid log format: %s", format)
 	}

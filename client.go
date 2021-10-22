@@ -9,7 +9,6 @@ import (
 	"os"
 
 	elasticsearch "github.com/elastic/go-elasticsearch/v7"
-	log "github.com/sirupsen/logrus"
 )
 
 type Client struct {
@@ -28,7 +27,7 @@ func NewClient(addresses []string, rootCA, repository string, insecure bool) (*C
 			return nil, fmt.Errorf("failed to append %q to RootCAs: %v", rootCA, err)
 		}
 		if ok := rootCAs.AppendCertsFromPEM(cert); !ok {
-			log.Error("No certs appended, using system certs only")
+			return nil, fmt.Errorf("failed to append %q to RootCAs: %v", rootCA, err)
 		}
 	}
 

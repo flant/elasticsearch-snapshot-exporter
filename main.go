@@ -125,7 +125,7 @@ func main() {
 	}
 	go func() {
 		log.Info("Fetching data from: ", *address)
-		c.Entry(e).Job.Run()
+		c.Entry(e).WrappedJob.Run()
 	}()
 
 	c.Start()

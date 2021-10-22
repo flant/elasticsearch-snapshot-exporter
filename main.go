@@ -123,12 +123,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	go func() {
-		log.Info("Fetching data from: ", *address)
-		c.Entry(e).WrappedJob.Run()
-	}()
 
 	c.Start()
+	go func() {
+		log.Info("Fetching data from: ", *address)
+		c.Entry(e).Job.Run()
+	}()
 
 	log.Info("Starting server on ", *listenAddress)
 	log.Fatal(http.ListenAndServe(*listenAddress, nil))

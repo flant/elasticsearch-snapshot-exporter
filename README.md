@@ -23,3 +23,11 @@ Flags:
       --threads=2               Number of concurrent http requests to Elasticsearch.
       --version                 Show application version.
 ```
+
+Expose snapshot size metric
+
+```
+# HELP elasticsearch_snapshot_stats_size_in_bytes_total Total size of files that are referenced by the snapshot
+# TYPE elasticsearch_snapshot_stats_size_in_bytes_total gauge
+elasticsearch_snapshot_stats_size_in_bytes_total{prefix="",repository="",snapshot="",state=""} 0
+```

@@ -1,6 +1,6 @@
 module github.com/flant/elasticsearch-snapshot-exporter
 
-go 1.15
+go 1.16
 
 require (
 	github.com/alecthomas/units v0.0.0-20210927113745-59d0afb8317a // indirect

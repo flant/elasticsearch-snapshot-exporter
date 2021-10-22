@@ -5,10 +5,8 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"net"
 	"net/http"
-	"time"
+	"os"
 
 	log "github.com/sirupsen/logrus"
 
@@ -20,15 +18,15 @@ type Client struct {
 	repository string
 }
 
-func NewClient(endpoints []string, cacert, repository string, insecure bool) (*Client, error) {
+func NewClient(addresses []string, rootCA, repository string, insecure bool) (*Client, error) {
 	rootCAs, _ := x509.SystemCertPool()
 	if rootCAs == nil {
 		rootCAs = x509.NewCertPool()
 	}
-	if cacert != "" {
-		cert, err := ioutil.ReadFile(cacert)
+	if rootCA != "" {
+		cert, err := os.ReadFile(rootCA)
 		if err != nil {
-			return nil, fmt.Errorf("failed to append %q to RootCAs: %v", cacert, err)
+			return nil, fmt.Errorf("failed to append %q to RootCAs: %v", rootCA, err)
 		}
 		if ok := rootCAs.AppendCertsFromPEM(cert); !ok {
 			log.Error("No certs appended, using system certs only")
@@ -36,11 +34,9 @@ func NewClient(endpoints []string, cacert, repository string, insecure bool) (*C
 	}
 
 	cfg := elasticsearch.Config{
-		Addresses: endpoints,
+		Addresses: addresses,
 		Transport: &http.Transport{
-			MaxIdleConnsPerHost:   10,
-			ResponseHeaderTimeout: time.Second,
-			DialContext:           (&net.Dialer{Timeout: time.Second}).DialContext,
+			MaxIdleConnsPerHost: 10,
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: insecure,
 				RootCAs:            rootCAs,
@@ -57,93 +53,75 @@ func NewClient(endpoints []string, cacert, repository string, insecure bool) (*C
 
 }
 
-func (c *Client) GetSnapshots() ([]string, error) {
-	resp, err := c.es.Cat.Snapshots()
-	var r []CatSnapshot
+func (c *Client) GetSnapshot(s []string) ([]map[string]interface{}, error) {
+	log.Debug("Getting snapshots from repository: ", c.repository)
+	resp, err := c.es.Snapshot.Get(c.repository, s)
 	if err != nil {
 		return nil, fmt.Errorf("error getting response: %s", err)
 	}
 	defer resp.Body.Close()
 
+	if resp.IsError() {
+		return nil, fmt.Errorf("request failed: %v", resp.String())
+	}
+
+	var r map[string][]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
 		return nil, err
 	}
 
-	var s []string
-	for _, v := range r {
-		s = append(s, v.ID)
+	m := make([]map[string]interface{}, 0, len(r))
+	for _, v := range r["snapshots"] {
+		m = append(m, v.(map[string]interface{}))
 	}
 
-	return s, nil
+	return m, nil
 }
 
-func (c *Client) GetSnapshot(s string) (*Snapshot, error) {
-	resp, err := c.es.Snapshot.Get(c.repository, []string{s})
+func (c *Client) GetSnapshotStatus(s []string) ([]map[string]interface{}, error) {
+	log.Debug("Getting snapshot info for: ", s)
+	resp, err := c.es.Snapshot.Status(
+		c.es.Snapshot.Status.WithRepository(c.repository),
+		c.es.Snapshot.Status.WithSnapshot(s...),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("error getting response: %s", err)
 	}
 	defer resp.Body.Close()
 
-	var r Snapshot
+	if resp.IsError() {
+		return nil, fmt.Errorf("request failed: %v", resp.String())
+	}
+
+	var r map[string][]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
 		return nil, err
 	}
 
-	return &r, nil
+	m := make([]map[string]interface{}, 0, len(r))
+	for _, v := range r["snapshots"] {
+		m = append(m, v.(map[string]interface{}))
+	}
+
+	return m, nil
 }
 
-type CatSnapshot struct {
-	ID               string    `json:"id"`
-	Status           string    `json:"status"`
-	StartEpoch       int       `json:"start_epoch"`
-	StartTime        time.Time `json:"start_time"`
-	EndEpoch         int       `json:"end_epoch"`
-	EndTime          time.Time `json:"end_time"`
-	Duration         string    `json:"duration"`
-	Indices          int       `json:"indices"`
-	SuccessfulShards int       `json:"successful_shards"`
-	FailedShards     int       `json:"failed_shards"`
-	TotalShards      int       `json:"total_shards"`
-}
+func (c *Client) GetInfo() (map[string]interface{}, error) {
+	log.Debug("Getting cluster info")
+	resp, err := c.es.Info()
+	if err != nil {
+		return nil, fmt.Errorf("error getting response: %s", err)
+	}
+	defer resp.Body.Close()
 
-type ShardStats struct {
-	Initializing int `json:"initializing"`
-	Started      int `json:"started"`
-	Finalizing   int `json:"finalizing"`
-	Done         int `json:"done"`
-	Failed       int `json:"failed"`
-	Total        int `json:"total"`
-}
+	if resp.IsError() {
+		return nil, fmt.Errorf("request failed: %v", resp.String())
+	}
 
-type Stats struct {
-	Incremental struct {
-		FileCount   int `json:"file_count"`
-		SizeInBytes int `json:"size_in_bytes"`
-	} `json:"incremental"`
-	Total struct {
-		FileCount   int `json:"file_count"`
-		SizeInBytes int `json:"size_in_bytes"`
-	} `json:"total"`
-	StartTimeInMillis int `json:"start_time_in_millis"` //time.Seconds
-	TimeInMillis      int `json:"time_in_millis"`
-}
+	var r map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		return nil, err
+	}
 
-type IndexStats struct {
-	ShardsStats ShardStats `json:"shards_stats"`
-	Stats       Stats      `json:"stats"`
-	Shards      map[string]struct {
-		Stage string `json:"stage"`
-		Stats Stats  `json:"stats"`
-	} `json:"shards"`
-}
-
-type Snapshot struct {
-	Snapshot           string                `json:"snapshot"`
-	Repository         string                `json:"repository"`
-	UUID               string                `json:"uuid"`
-	State              string                `json:"state"`
-	IncludeGlobalState bool                  `json:"include_global_state"`
-	ShardStats         ShardStats            `json:"shards_stats"`
-	Stats              Stats                 `json:"stats"`
-	Indices            map[string]IndexStats `json:"indices"`
+	return r, nil
 }

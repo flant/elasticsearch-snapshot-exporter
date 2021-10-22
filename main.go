@@ -17,7 +17,7 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
-// Same struct prometheus uses for their /version endpoint.
+// Same struct prometheus uses for their /version address.
 // Separate copy to avoid pulling all of prometheus as a dependency
 type prometheusVersion struct {
 	Version   string `json:"version"`
@@ -29,12 +29,10 @@ type prometheusVersion struct {
 }
 
 var (
-	listenAddress = kingpin.Flag(
-		"telemetry.addr",
-		"host:port for exporter.",
+	listenAddress = kingpin.Flag("telemetry.addr",
+		"Listen on host:port.",
 	).Default(":9141").String()
-	metricsPath = kingpin.Flag(
-		"telemetry.path",
+	metricsPath = kingpin.Flag("telemetry.path",
 		"URL path for surfacing collected metrics.",
 	).Default("/metrics").String()
 	logLevel = kingpin.Flag("log.level",
@@ -45,32 +43,33 @@ var (
 	).Default("json").Enum("json", "text")
 
 	schedule = kingpin.Flag("schedule",
-		"Cron job schedule",
+		"Cron job schedule for fetching snapshot data.",
 	).Default("0 14 * * *").String()
 
-	endpoint = kingpin.Flag("endpoint",
-		"Elasticsearch URL. ",
+	address = kingpin.Flag("address",
+		"Elasticsearch node to use.",
 	).Default("http://localhost:9200").String()
-	cacert = kingpin.Flag("cacert",
-		"Elasticsearch CA certificate",
+	rootCA = kingpin.Flag("root.ca",
+		"PEM-encoded certificate authorities",
 	).PlaceHolder("/etc/ssl/certs/elk-root-ca.pem").ExistingFile()
-	insecure = kingpin.Flag("insecure",
-		"Allow insecure server connections when using SSL",
-	).Default("false").Bool()
 	repository = kingpin.Flag("repository",
-		"Elasticsearch backup repository name",
+		"Elasticsearch snapshot repository name.",
 	).Default("s3-backup").String()
+	insecure = kingpin.Flag("insecure",
+		"Allow insecure server connections when using SSL.",
+	).Default("false").Bool()
 	threads = kingpin.Flag("threads",
-		"Number of concurrent http requests to elasticsearch",
-	).Default("1").Int()
+		"Number of concurrent http requests to Elasticsearch.",
+	).Default("2").Int()
 
+	labels       = []string{"repository", "state", "snapshot", "prefix"}
 	snapshotSize = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace:   "elasticsearch",
 		Subsystem:   "snapshot_stats",
 		Name:        "size_in_bytes_total",
 		Help:        "Total size of files that are referenced by the snapshot",
 		ConstLabels: nil,
-	}, []string{"repository", "state", "snapshot", "prefix"})
+	}, labels)
 )
 
 func main() {
@@ -114,64 +113,99 @@ func main() {
 	log.Info("Starting es-snapshot-exporter", version.Info())
 	log.Info("Build context", version.BuildContext())
 
+	if err := connectionCheck(); err != nil {
+		log.Fatal(err)
+	}
+
 	go func() {
-		log.Infof("Fetching data from: %s", *endpoint)
+		log.Info("Fetching data from: ", *address)
 		if err := getMetrics(); err != nil {
 			log.Fatal(err)
 		}
 	}()
 
+	log.Infof("Starting cron with schedule: \"%s\"", *schedule)
 	c := cron.New()
 	if _, err := c.AddFunc(*schedule, func() { getMetrics() }); err != nil {
 		log.Fatal(err)
 	}
 	c.Start()
 
-	log.Info("Starting server on", *listenAddress)
+	log.Info("Starting server on ", *listenAddress)
 	log.Fatal(http.ListenAndServe(*listenAddress, nil))
 
 }
 
 func getMetrics() error {
-	client, err := NewClient([]string{*endpoint}, *cacert, *repository, *insecure)
+	client, err := NewClient([]string{*address}, *rootCA, *repository, *insecure)
 	if err != nil {
-		return fmt.Errorf("error creating the client: %s", err)
+		return fmt.Errorf("error creating the client: %v", err)
 	}
 
-	s, err := client.GetSnapshots()
+	snapshots, err := client.GetSnapshot([]string{"_all"})
 	if err != nil {
-		return fmt.Errorf("error fetching snapshots: %s", err)
+		return fmt.Errorf("error fetching snapshot: %v", err)
 	}
+	log.Debugf("Got %d snapshots", len(snapshots))
 
 	var wg sync.WaitGroup
 	ch := make(chan string)
 	for i := 0; i < *threads; i++ {
 		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			for s := range ch {
-				snap, err := client.GetSnapshot(s)
+				stats, err := client.GetSnapshotStatus([]string{s})
 				if err != nil {
-					log.Error(err)
+					log.Errorf("error fetching snapshot status: %v", err)
 					continue
 				}
-				snapshotSize.WithLabelValues(
-					snap.Repository,
-					snap.State,
-					snap.Snapshot,
-					strings.Split(snap.Snapshot, "-")[0],
-				).Set(float64(snap.Stats.Total.SizeInBytes))
+				for _, snap := range stats {
+					stats := snap["stats"].(map[string]interface{})
+					total := stats["total"].(map[string]interface{})
+					size := total["size_in_bytes"].(float64)
+					snapshotSize.WithLabelValues(getLabelValues(snap)...).Set(size)
+				}
 			}
 		}()
 	}
 
-	for _, s := range s {
-		ch <- s
+	for _, v := range snapshots {
+		ch <- v["snapshot"].(string)
 	}
 
-	close(ch)
 	wg.Wait()
 
-	log.Info("Finished fetching snapshot info")
+	log.Info("Finished fetching snapshot data")
+
+	return nil
+}
+
+func getLabelValues(snapshot map[string]interface{}) (values []string) {
+	for _, label := range labels {
+		switch label {
+		case "prefix":
+			values = append(values, strings.Split(snapshot["snapshot"].(string), "-")[0])
+		default:
+			values = append(values, snapshot[label].(string))
+		}
+	}
+
+	return values
+}
+
+func connectionCheck() error {
+	client, err := NewClient([]string{*address}, *rootCA, *repository, *insecure)
+	if err != nil {
+		return fmt.Errorf("error creating the client: %v", err)
+	}
+
+	v, err := client.GetInfo()
+	if err != nil {
+		return fmt.Errorf("error fetching snapshots: %v", err)
+	}
+
+	log.Infof("Cluster info: %v", v)
 
 	return nil
 }

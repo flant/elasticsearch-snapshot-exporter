@@ -173,6 +173,7 @@ func getMetrics() error {
 		ch <- v["snapshot"].(string)
 	}
 
+	close(ch)
 	wg.Wait()
 
 	log.Info("Finished fetching snapshot data")

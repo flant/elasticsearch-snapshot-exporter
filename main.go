@@ -11,7 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/version"
-	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/robfig/cron/v3"
 
@@ -36,10 +36,10 @@ var (
 	metricsPath = kingpin.Flag("telemetry.path",
 		"URL path for surfacing collected metrics.",
 	).Default("/metrics").String()
-	logLevel = kingpin.Flag("logrus.level",
+	logLevel = kingpin.Flag("log.level",
 		"Only log messages with the given severity or above. Valid levels: [debug, info, warn, error, fatal]",
 	).Default("info").Enum("debug", "info", "warn", "error", "fatal")
-	logFormat = kingpin.Flag("logrus.format",
+	logFormat = kingpin.Flag("log.format",
 		"Set the log format. Valid formats: [json, text]",
 	).Default("json").Enum("json", "text")
 
@@ -112,33 +112,33 @@ func main() {
 </html>`))
 	})
 
-	logrus.Info("Starting es-snapshot-exporter", version.Info())
-	logrus.Info("Build context", version.BuildContext())
+	log.Info("Starting es-snapshot-exporter", version.Info())
+	log.Info("Build context", version.BuildContext())
 
 	if err := connectionCheck(); err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 
-	logrus.Infof("Starting cron with schedule: \"%s\"", *schedule)
+	log.Infof("Starting cron with schedule: \"%s\"", *schedule)
 	c := cron.New(
 		cron.WithChain(
-			cron.SkipIfStillRunning(logrusr.New(logrus.New())),
-			cron.Recover(logrusr.New(logrus.New())),
+			cron.SkipIfStillRunning(logrusr.New(log.New())),
+			cron.Recover(logrusr.New(log.New())),
 		),
 	)
 	e, err := c.AddFunc(*schedule, func() { getMetrics() })
 	if err != nil {
-		logrus.Fatal(err)
+		log.Fatal(err)
 	}
 	c.Start()
 
 	go func() {
-		logrus.Info("Fetching data from: ", *address)
-		c.Entry(e).Job.Run()
+		log.Info("Fetching data from: ", *address)
+		c.Entry(e).WrappedJob.Run()
 	}()
 
-	logrus.Info("Starting server on ", *listenAddress)
-	logrus.Fatal(http.ListenAndServe(*listenAddress, nil))
+	log.Info("Starting server on ", *listenAddress)
+	log.Fatal(http.ListenAndServe(*listenAddress, nil))
 
 }
 
@@ -152,7 +152,7 @@ func getMetrics() error {
 	if err != nil {
 		return fmt.Errorf("error fetching snapshot: %v", err)
 	}
-	logrus.Debugf("Got %d snapshots", len(snapshots))
+	log.Debugf("Got %d snapshots", len(snapshots))
 
 	var wg sync.WaitGroup
 	ch := make(chan string)
@@ -163,7 +163,7 @@ func getMetrics() error {
 			for s := range ch {
 				stats, err := client.GetSnapshotStatus([]string{s})
 				if err != nil {
-					logrus.Errorf("error fetching snapshot status: %v", err)
+					log.Errorf("error fetching snapshot status: %v", err)
 					continue
 				}
 				for _, snap := range stats {
@@ -183,7 +183,7 @@ func getMetrics() error {
 	close(ch)
 	wg.Wait()
 
-	logrus.Info("Finished fetching snapshot data")
+	log.Info("Finished fetching snapshot data")
 
 	return nil
 }
@@ -212,7 +212,7 @@ func connectionCheck() error {
 		return fmt.Errorf("error getting cluster info: %v", err)
 	}
 
-	logrus.Infof("Cluster info: %v", v)
+	log.Infof("Cluster info: %v", v)
 
 	return nil
 }
@@ -221,36 +221,36 @@ func healthCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_, err := fmt.Fprintln(w, `{"status":"ok"}`)
 	if err != nil {
-		logrus.Debugf("Failed to write to stream: %v", err)
+		log.Debugf("Failed to write to stream: %v", err)
 	}
 }
 
 func setLogLevel(level string) error {
-	lvl, err := logrus.ParseLevel(level)
+	lvl, err := log.ParseLevel(level)
 	if err != nil {
 		return err
 	}
-	logrus.SetLevel(lvl)
+	log.SetLevel(lvl)
 
 	return nil
 }
 
 func setLogFormat(format string) error {
-	var formatter logrus.Formatter
+	var formatter log.Formatter
 
 	switch format {
 	case "text":
-		formatter = &logrus.TextFormatter{
+		formatter = &log.TextFormatter{
 			DisableColors: true,
 			FullTimestamp: true,
 		}
 	case "json":
-		formatter = &logrus.JSONFormatter{}
+		formatter = &log.JSONFormatter{}
 	default:
 		return fmt.Errorf("invalid log format: %s", format)
 	}
 
-	logrus.SetFormatter(formatter)
+	log.SetFormatter(formatter)
 
 	return nil
 }

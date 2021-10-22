@@ -7,10 +7,11 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/bombsimon/logrusr/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/version"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 
 	"github.com/robfig/cron/v3"
 
@@ -35,10 +36,10 @@ var (
 	metricsPath = kingpin.Flag("telemetry.path",
 		"URL path for surfacing collected metrics.",
 	).Default("/metrics").String()
-	logLevel = kingpin.Flag("log.level",
+	logLevel = kingpin.Flag("logrus.level",
 		"Only log messages with the given severity or above. Valid levels: [debug, info, warn, error, fatal]",
 	).Default("info").Enum("debug", "info", "warn", "error", "fatal")
-	logFormat = kingpin.Flag("log.format",
+	logFormat = kingpin.Flag("logrus.format",
 		"Set the log format. Valid formats: [json, text]",
 	).Default("json").Enum("json", "text")
 
@@ -77,6 +78,7 @@ func main() {
 	kingpin.HelpFlag.Short('h')
 
 	kingpin.Parse()
+
 	setLogLevel(*logLevel)
 	setLogFormat(*logFormat)
 
@@ -110,28 +112,33 @@ func main() {
 </html>`))
 	})
 
-	log.Info("Starting es-snapshot-exporter", version.Info())
-	log.Info("Build context", version.BuildContext())
+	logrus.Info("Starting es-snapshot-exporter", version.Info())
+	logrus.Info("Build context", version.BuildContext())
 
 	if err := connectionCheck(); err != nil {
-		log.Fatal(err)
+		logrus.Fatal(err)
 	}
 
-	log.Infof("Starting cron with schedule: \"%s\"", *schedule)
-	c := cron.New()
+	logrus.Infof("Starting cron with schedule: \"%s\"", *schedule)
+	c := cron.New(
+		cron.WithChain(
+			cron.SkipIfStillRunning(logrusr.New(logrus.New())),
+			cron.Recover(logrusr.New(logrus.New())),
+		),
+	)
 	e, err := c.AddFunc(*schedule, func() { getMetrics() })
 	if err != nil {
-		log.Fatal(err)
+		logrus.Fatal(err)
 	}
-
 	c.Start()
+
 	go func() {
-		log.Info("Fetching data from: ", *address)
-		c.Entry(e).WrappedJob.Run()
+		logrus.Info("Fetching data from: ", *address)
+		c.Entry(e).Job.Run()
 	}()
 
-	log.Info("Starting server on ", *listenAddress)
-	log.Fatal(http.ListenAndServe(*listenAddress, nil))
+	logrus.Info("Starting server on ", *listenAddress)
+	logrus.Fatal(http.ListenAndServe(*listenAddress, nil))
 
 }
 
@@ -145,7 +152,7 @@ func getMetrics() error {
 	if err != nil {
 		return fmt.Errorf("error fetching snapshot: %v", err)
 	}
-	log.Debugf("Got %d snapshots", len(snapshots))
+	logrus.Debugf("Got %d snapshots", len(snapshots))
 
 	var wg sync.WaitGroup
 	ch := make(chan string)
@@ -156,7 +163,7 @@ func getMetrics() error {
 			for s := range ch {
 				stats, err := client.GetSnapshotStatus([]string{s})
 				if err != nil {
-					log.Errorf("error fetching snapshot status: %v", err)
+					logrus.Errorf("error fetching snapshot status: %v", err)
 					continue
 				}
 				for _, snap := range stats {
@@ -176,7 +183,7 @@ func getMetrics() error {
 	close(ch)
 	wg.Wait()
 
-	log.Info("Finished fetching snapshot data")
+	logrus.Info("Finished fetching snapshot data")
 
 	return nil
 }
@@ -202,10 +209,10 @@ func connectionCheck() error {
 
 	v, err := client.GetInfo()
 	if err != nil {
-		return fmt.Errorf("error fetching snapshots: %v", err)
+		return fmt.Errorf("error getting cluster info: %v", err)
 	}
 
-	log.Infof("Cluster info: %v", v)
+	logrus.Infof("Cluster info: %v", v)
 
 	return nil
 }
@@ -214,36 +221,36 @@ func healthCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_, err := fmt.Fprintln(w, `{"status":"ok"}`)
 	if err != nil {
-		log.Debugf("Failed to write to stream: %v", err)
+		logrus.Debugf("Failed to write to stream: %v", err)
 	}
 }
 
 func setLogLevel(level string) error {
-	lvl, err := log.ParseLevel(level)
+	lvl, err := logrus.ParseLevel(level)
 	if err != nil {
 		return err
 	}
-	log.SetLevel(lvl)
+	logrus.SetLevel(lvl)
 
 	return nil
 }
 
 func setLogFormat(format string) error {
-	var formatter log.Formatter
+	var formatter logrus.Formatter
 
 	switch format {
 	case "text":
-		formatter = &log.TextFormatter{
+		formatter = &logrus.TextFormatter{
 			DisableColors: true,
 			FullTimestamp: true,
 		}
 	case "json":
-		formatter = &log.JSONFormatter{}
+		formatter = &logrus.JSONFormatter{}
 	default:
 		return fmt.Errorf("invalid log format: %s", format)
 	}
 
-	log.SetFormatter(formatter)
+	logrus.SetFormatter(formatter)
 
 	return nil
 }

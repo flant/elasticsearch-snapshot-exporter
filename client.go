@@ -8,9 +8,8 @@ import (
 	"net/http"
 	"os"
 
-	log "github.com/sirupsen/logrus"
-
 	elasticsearch "github.com/elastic/go-elasticsearch/v7"
+	"github.com/sirupsen/logrus"
 )
 
 type Client struct {
@@ -29,7 +28,7 @@ func NewClient(addresses []string, rootCA, repository string, insecure bool) (*C
 			return nil, fmt.Errorf("failed to append %q to RootCAs: %v", rootCA, err)
 		}
 		if ok := rootCAs.AppendCertsFromPEM(cert); !ok {
-			log.Error("No certs appended, using system certs only")
+			logrus.Error("No certs appended, using system certs only")
 		}
 	}
 
@@ -54,7 +53,7 @@ func NewClient(addresses []string, rootCA, repository string, insecure bool) (*C
 }
 
 func (c *Client) GetSnapshot(s []string) ([]map[string]interface{}, error) {
-	log.Debug("Getting snapshots from repository: ", c.repository)
+	logrus.Debug("Getting snapshots from repository: ", c.repository)
 	resp, err := c.es.Snapshot.Get(c.repository, s)
 	if err != nil {
 		return nil, fmt.Errorf("error getting response: %s", err)
@@ -79,7 +78,7 @@ func (c *Client) GetSnapshot(s []string) ([]map[string]interface{}, error) {
 }
 
 func (c *Client) GetSnapshotStatus(s []string) ([]map[string]interface{}, error) {
-	log.Debug("Getting snapshot info for: ", s)
+	logrus.Debug("Getting snapshot info for: ", s)
 	resp, err := c.es.Snapshot.Status(
 		c.es.Snapshot.Status.WithRepository(c.repository),
 		c.es.Snapshot.Status.WithSnapshot(s...),
@@ -107,7 +106,7 @@ func (c *Client) GetSnapshotStatus(s []string) ([]map[string]interface{}, error)
 }
 
 func (c *Client) GetInfo() (map[string]interface{}, error) {
-	log.Debug("Getting cluster info")
+	logrus.Debug("Getting cluster info")
 	resp, err := c.es.Info()
 	if err != nil {
 		return nil, fmt.Errorf("error getting response: %s", err)

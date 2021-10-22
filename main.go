@@ -117,18 +117,17 @@ func main() {
 		log.Fatal(err)
 	}
 
-	go func() {
-		log.Info("Fetching data from: ", *address)
-		if err := getMetrics(); err != nil {
-			log.Fatal(err)
-		}
-	}()
-
 	log.Infof("Starting cron with schedule: \"%s\"", *schedule)
 	c := cron.New()
-	if _, err := c.AddFunc(*schedule, func() { getMetrics() }); err != nil {
+	e, err := c.AddFunc(*schedule, func() { getMetrics() })
+	if err != nil {
 		log.Fatal(err)
 	}
+	go func() {
+		log.Info("Fetching data from: ", *address)
+		c.Entry(e).Job.Run()
+	}()
+
 	c.Start()
 
 	log.Info("Starting server on ", *listenAddress)

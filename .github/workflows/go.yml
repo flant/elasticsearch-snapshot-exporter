@@ -32,7 +32,7 @@ jobs:
             mv build/es-snapshot-exporter build/es-snapshot-exporter-${GOARCH}-${GOOS}
           done
         done
-        cd build/ && sha256sum -b * > sha256sums
+        promu -v checksum build/
 
     - name: Release
       uses: softprops/action-gh-release@v1

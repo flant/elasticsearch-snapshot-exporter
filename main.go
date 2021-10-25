@@ -70,6 +70,8 @@ var (
 		Help:        "Total size of files that are referenced by the snapshot",
 		ConstLabels: nil,
 	}, labels)
+
+	currentSnapshots []map[string]interface{}
 )
 
 func main() {
@@ -151,11 +153,30 @@ func getMetrics() error {
 		return fmt.Errorf("error creating the client: %v", err)
 	}
 
-	snapshots, err := client.GetSnapshot([]string{"_all"})
+	previousSnapshots := currentSnapshots
+
+	currentSnapshots, err = client.GetSnapshot([]string{"_all"})
 	if err != nil {
 		return fmt.Errorf("error fetching snapshot: %v", err)
 	}
-	log.Debugf("Got %d snapshots", len(snapshots))
+	log.Debugf("Got %d snapshots", len(currentSnapshots))
+
+	// delete previous metrics to avoid exposing metrics for nonexistent snapshots
+	m := make(map[string]struct{}, len(previousSnapshots))
+	for _, cur := range currentSnapshots {
+		m[cur["snapshot"].(string)] = struct{}{}
+	}
+
+	var todelete []map[string]interface{}
+	for _, prev := range previousSnapshots {
+		if _, found := m[prev["snapshot"].(string)]; !found {
+			todelete = append(todelete, prev)
+		}
+	}
+
+	for _, v := range todelete {
+		snapshotSize.DeleteLabelValues(getLabelValues(v)...)
+	}
 
 	var wg sync.WaitGroup
 	ch := make(chan string)
@@ -179,10 +200,7 @@ func getMetrics() error {
 		}()
 	}
 
-	// reset previous metrics to avoid exposing metrics for nonexistent snapshots
-	snapshotSize.Reset()
-
-	for _, v := range snapshots {
+	for _, v := range currentSnapshots {
 		ch <- v["snapshot"].(string)
 	}
 

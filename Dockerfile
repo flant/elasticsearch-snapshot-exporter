@@ -1,19 +1,24 @@
-FROM debian:stable
+FROM golang:1.16-buster as builder
+
+WORKDIR /src
+
+COPY . .
+
+RUN go get -v github.com/prometheus/promu \
+    && promu build -v --prefix build
+
+
+FROM debian:buster-slim
 LABEL maintainer="Vasily Maryutenkov <vasily.maryutenkov@flant.com>"
 
-RUN apt-get update \
-        && apt-get dist-upgrade -y \
-        && apt-get install -y --no-install-recommends \
-            ca-certificates \
-            curl
+RUN DEBIAN_FRONTEND=noninteractive; apt-get update \
+    && apt-get install -qy --no-install-recommends \
+        ca-certificates \
+        tzdata \
+        curl
 
-ENV VERSION 0.1.0
-ENV DOWNLOAD_URL https://github.com/flant/elasticsearch-snapshot-exporter/releases/download/${VERSION}/es-snapshot-exporter-linux-amd64
-
-RUN curl -fsSL "$DOWNLOAD_URL" -o /es-snapshot-exporter \
-        && chmod 755 /es-snapshot-exporter
+COPY --from=builder /src/build/es-snapshot-exporter /es-snapshot-exporter
 
 EXPOSE 9141/tcp
 
 ENTRYPOINT [ "/es-snapshot-exporter" ]
-CMD [ "--base.dir", "/data" ]

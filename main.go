@@ -182,6 +182,9 @@ func getMetrics() error {
 		}()
 	}
 
+	// reset previous metrics to avoid exposing metrics for nonexistent snapshots
+	snapshotSize.Reset()
+
 	for _, v := range snapshots {
 		ch <- v["snapshot"].(string)
 	}

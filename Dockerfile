@@ -14,6 +14,7 @@ LABEL maintainer="Vasily Maryutenkov <vasily.maryutenkov@flant.com>"
 RUN DEBIAN_FRONTEND=noninteractive; apt-get update \
     && apt-get install -qy --no-install-recommends \
         ca-certificates \
+        tzdata \
         curl
 
 COPY --from=builder /src/build/es-snapshot-exporter /es-snapshot-exporter

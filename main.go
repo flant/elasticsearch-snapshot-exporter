@@ -162,7 +162,7 @@ func getMetrics() error {
 	log.Debugf("Got %d snapshots", len(currentSnapshots))
 
 	// delete previous metrics to avoid exposing metrics for nonexistent snapshots
-	m := make(map[string]struct{}, len(previousSnapshots))
+	m := make(map[string]struct{}, len(currentSnapshots))
 	for _, cur := range currentSnapshots {
 		m[cur["snapshot"].(string)] = struct{}{}
 	}

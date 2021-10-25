@@ -175,6 +175,7 @@ func getMetrics() error {
 	}
 
 	for _, v := range todelete {
+		log.Debug("Deleting previous snapshot metrics for: ", v["snapshot"].(string))
 		snapshotSize.DeleteLabelValues(getLabelValues(v)...)
 	}
 

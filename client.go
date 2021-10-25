@@ -59,7 +59,7 @@ func (c *Client) GetSnapshot(s []string) ([]map[string]interface{}, error) {
 }
 
 func (c *Client) GetSnapshotStatus(s []string) ([]map[string]interface{}, error) {
-	log.Debug("Getting snapshot info for: ", s)
+	log.Debug("Getting snapshot status for: ", s)
 	resp, err := c.es.Snapshot.Status(
 		c.es.Snapshot.Status.WithRepository(c.repository),
 		c.es.Snapshot.Status.WithSnapshot(s...),

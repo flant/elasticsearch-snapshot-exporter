@@ -52,9 +52,6 @@ var (
 	address = kingpin.Flag("address",
 		"Elasticsearch node to use.",
 	).Default("http://localhost:9200").String()
-	rootCA = kingpin.Flag("root.ca",
-		"PEM-encoded certificate authorities",
-	).PlaceHolder("/etc/ssl/certs/elk-root-ca.pem").ExistingFile()
 	repository = kingpin.Flag("repository",
 		"Elasticsearch snapshot repository name.",
 	).Default("s3-backup").String()
@@ -149,7 +146,7 @@ func main() {
 }
 
 func getMetrics() error {
-	client, err := NewClient([]string{*address}, *rootCA, *repository, *insecure)
+	client, err := NewClient([]string{*address}, *repository, *insecure)
 	if err != nil {
 		return fmt.Errorf("error creating the client: %v", err)
 	}
@@ -211,7 +208,7 @@ func getLabelValues(snapshot map[string]interface{}) (values []string) {
 }
 
 func connectionCheck() error {
-	client, err := NewClient([]string{*address}, *rootCA, *repository, *insecure)
+	client, err := NewClient([]string{*address}, *repository, *insecure)
 	if err != nil {
 		return fmt.Errorf("error creating the client: %v", err)
 	}

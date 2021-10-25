@@ -2,11 +2,9 @@ package main
 
 import (
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 
 	elasticsearch "github.com/elastic/go-elasticsearch/v7"
 )
@@ -16,28 +14,12 @@ type Client struct {
 	repository string
 }
 
-func NewClient(addresses []string, rootCA, repository string, insecure bool) (*Client, error) {
-	rootCAs, _ := x509.SystemCertPool()
-	if rootCAs == nil {
-		rootCAs = x509.NewCertPool()
-	}
-	if rootCA != "" {
-		cert, err := os.ReadFile(rootCA)
-		if err != nil {
-			return nil, fmt.Errorf("failed to append %q to RootCAs: %v", rootCA, err)
-		}
-		if ok := rootCAs.AppendCertsFromPEM(cert); !ok {
-			return nil, fmt.Errorf("failed to append %q to RootCAs: %v", rootCA, err)
-		}
-	}
-
+func NewClient(addresses []string, repository string, insecure bool) (*Client, error) {
 	cfg := elasticsearch.Config{
 		Addresses: addresses,
 		Transport: &http.Transport{
-			MaxIdleConnsPerHost: 10,
 			TLSClientConfig: &tls.Config{
 				InsecureSkipVerify: insecure,
-				RootCAs:            rootCAs,
 			},
 		},
 	}

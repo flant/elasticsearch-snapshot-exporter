@@ -71,7 +71,7 @@ var (
 		ConstLabels: nil,
 	}, labels)
 
-	currentSnapshots []map[string]interface{}
+	currentSnapshots = make([]map[string]interface{}, 0)
 )
 
 func main() {

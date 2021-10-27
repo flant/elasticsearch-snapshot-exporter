@@ -71,7 +71,7 @@ var (
 		ConstLabels: nil,
 	}, labels)
 
-	currentSnapshots = make([]map[string]interface{}, 0)
+	currentSnapshots []map[string]interface{}
 )
 
 func main() {
@@ -138,7 +138,6 @@ func main() {
 	c.Start()
 
 	go func() {
-		log.Info("Fetching data from: ", *address)
 		c.Entry(e).WrappedJob.Run()
 	}()
 
@@ -148,6 +147,7 @@ func main() {
 }
 
 func getMetrics() error {
+	log.Info("Fetching data from: ", *address)
 	client, err := NewClient([]string{*address}, *repository, *insecure)
 	if err != nil {
 		return fmt.Errorf("error creating the client: %v", err)
@@ -218,6 +218,8 @@ func getLabelValues(snapshot map[string]interface{}) (values []string) {
 		switch label {
 		case "prefix":
 			values = append(values, strings.Split(snapshot["snapshot"].(string), "-")[0])
+		case "repository":
+			values = append(values, *repository)
 		default:
 			values = append(values, snapshot[label].(string))
 		}

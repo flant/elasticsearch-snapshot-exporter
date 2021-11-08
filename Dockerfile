@@ -21,4 +21,4 @@ COPY --from=builder /src/build/es-snapshot-exporter /es-snapshot-exporter
 
 EXPOSE 9141/tcp
 
-ENTRYPOINT [ "/es-snapshot-exporter" ]
+CMD [ "/es-snapshot-exporter" ]

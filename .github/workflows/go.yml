@@ -29,7 +29,7 @@ jobs:
             export GOOS=$GOOS
             export GOARCH=$GOARCH
             promu build -v --prefix=build
-            mv build/es-snapshot-exporter build/es-snapshot-exporter-${GOARCH}-${GOOS}
+            mv build/es-snapshot-exporter build/es-snapshot-exporter-${GOOS}-${GOARCH}
           done
         done
         promu -v checksum build/

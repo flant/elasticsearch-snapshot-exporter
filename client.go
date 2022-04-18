@@ -14,13 +14,11 @@ type Client struct {
 	repository string
 }
 
-func NewClient(addresses []string, repository string, insecure bool) (*Client, error) {
+func NewClient(addresses []string, repository string, tlsClientConfig *tls.Config) (*Client, error) {
 	cfg := elasticsearch.Config{
 		Addresses: addresses,
 		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: insecure,
-			},
+			TLSClientConfig: tlsClientConfig,
 		},
 	}
 

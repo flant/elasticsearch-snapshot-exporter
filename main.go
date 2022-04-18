@@ -55,9 +55,14 @@ var (
 	repository = kingpin.Flag("repository",
 		"Elasticsearch snapshot repository name.",
 	).Default("s3-backup").String()
-	insecure = kingpin.Flag("insecure",
-		"Allow insecure server connections when using SSL.",
-	).Default("false").Bool()
+	cacert = kingpin.Flag("ca-cert", "Path to PEM file that contains trusted Certificate Authorities for the Elasticsearch connection.").
+		Default("").String()
+	clientcert = kingpin.Flag("client-cert", "Path to PEM file that contains the corresponding cert for the private key to connect to Elasticsearch.").
+			Default("").String()
+	clientkey = kingpin.Flag("client-key", "Path to PEM file that contains the private key for client auth when connecting to Elasticsearch.").
+			Default("").String()
+	insecure = kingpin.Flag("insecure", "Skip SSL verification when connecting to Elasticsearch.").
+			Default("false").Bool()
 	threads = kingpin.Flag("threads",
 		"Number of concurrent http requests to Elasticsearch.",
 	).Default("2").Int()
@@ -148,7 +153,8 @@ func main() {
 
 func getMetrics() error {
 	log.Info("Fetching data from: ", *address)
-	client, err := NewClient([]string{*address}, *repository, *insecure)
+	tlsClientConfig := createTLSConfig(*cacert, *clientcert, *clientkey, *insecure)
+	client, err := NewClient([]string{*address}, *repository, tlsClientConfig)
 	if err != nil {
 		return fmt.Errorf("error creating the client: %v", err)
 	}
@@ -229,7 +235,8 @@ func getLabelValues(snapshot map[string]interface{}) (values []string) {
 }
 
 func connectionCheck() error {
-	client, err := NewClient([]string{*address}, *repository, *insecure)
+	tlsClientConfig := createTLSConfig(*cacert, *clientcert, *clientkey, *insecure)
+	client, err := NewClient([]string{*address}, *repository, tlsClientConfig)
 	if err != nil {
 		return fmt.Errorf("error creating the client: %v", err)
 	}

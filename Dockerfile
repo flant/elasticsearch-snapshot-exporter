@@ -1,10 +1,10 @@
-FROM golang:1.16-buster as builder
+FROM golang:1.19-buster as builder
 
 WORKDIR /src
 
 COPY . .
 
-RUN go get -v github.com/prometheus/promu \
+RUN go install -v github.com/prometheus/promu \
     && promu build -v --prefix build
 
 

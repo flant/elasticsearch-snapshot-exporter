@@ -186,13 +186,13 @@ func getMetrics() error {
 	}
 
 	var wg sync.WaitGroup
-	ch := make(chan string)
+	ch := make(chan map[string]string)
 	for i := 0; i < *threads; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for s := range ch {
-				stats, err := client.GetSnapshotStatus([]string{s})
+				stats, err := client.GetSnapshotStatus([]string{s["name"]})
 				if err != nil {
 					log.Errorf("error fetching snapshot status: %v", err)
 					continue
@@ -201,6 +201,7 @@ func getMetrics() error {
 					stats := snap["stats"].(map[string]interface{})
 					total := stats["total"].(map[string]interface{})
 					size := total["size_in_bytes"].(float64)
+					snap["state"] = s["state"]
 					snapshotSize.WithLabelValues(getLabelValues(snap)...).Set(size)
 				}
 			}
@@ -208,7 +209,7 @@ func getMetrics() error {
 	}
 
 	for _, v := range currentSnapshots {
-		ch <- v["snapshot"].(string)
+		ch <- map[string]string{"name": v["snapshot"].(string), "state": v["state"].(string)}
 	}
 
 	close(ch)

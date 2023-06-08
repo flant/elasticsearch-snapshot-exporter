@@ -70,7 +70,6 @@ func (c *Client) GetSnapshotStatus(s []string) ([]map[string]interface{}, error)
 	if resp.IsError() {
 		return nil, fmt.Errorf("request failed: %v", resp.String())
 	}
-	log.Debug("status response", resp)
 	var r map[string][]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
 		return nil, err

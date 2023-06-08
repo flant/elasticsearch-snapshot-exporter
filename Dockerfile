@@ -5,7 +5,7 @@ WORKDIR /src
 COPY . .
 
 RUN go install -v github.com/prometheus/promu \
-    && ~/go/bin/promu build -v --prefix build
+    && promu build -v --prefix build
 
 
 FROM debian:buster-slim

@@ -50,7 +50,7 @@ var (
 	).Default("0 14 * * *").String()
 
 	address = kingpin.Flag("address",
-		"Elasticsearch node to use.",
+		"Elasticsearch node to use. WARNING: do not specify username:password in this option; use OPENSEARCH_USER and OPENSEARCH_PASSWORD environment variables instead.",
 	).Default("http://localhost:9200").String()
 	repository = kingpin.Flag("repository",
 		"Elasticsearch snapshot repository name.",
@@ -80,6 +80,8 @@ var (
 )
 
 func main() {
+	kingpin.CommandLine.Help = `Authentication:
+  Set OPENSEARCH_USER and OPENSEARCH_PASSWORD environment variables to authenticate with OpenSearch.`
 	kingpin.Version(version.Print("es-snapshot-exporter"))
 	kingpin.HelpFlag.Short('h')
 

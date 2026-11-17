@@ -6,6 +6,10 @@
 $ es-snapshot-exporter -h
 usage: es-snapshot-exporter [<flags>]
 
+Authentication:
+
+  Set OPENSEARCH_USER and OPENSEARCH_PASSWORD environment variables to authenticate with OpenSearch.
+
 Flags:
   -h, --help                    Show context-sensitive help (also try --help-long and --help-man).
       --telemetry.addr=":9141"  Listen on host:port.
@@ -15,11 +19,13 @@ Flags:
       --log.format=json         Set the log format. Valid formats: [json, text]
       --schedule="0 14 * * *"   Cron job schedule for fetching snapshot data.
       --address="http://localhost:9200"
-                                Elasticsearch node to use.
-      --root.ca=/etc/ssl/certs/elk-root-ca.pem
-                                PEM-encoded certificate authorities
+                                Elasticsearch node to use. WARNING: do not specify username:password in this option; use OPENSEARCH_USER and OPENSEARCH_PASSWORD environment variables
+                                instead.
       --repository="s3-backup"  Elasticsearch snapshot repository name.
-      --insecure                Allow insecure server connections when using SSL.
+      --ca-cert=""              Path to PEM file that contains trusted Certificate Authorities for the Elasticsearch connection.
+      --client-cert=""          Path to PEM file that contains the corresponding cert for the private key to connect to Elasticsearch.
+      --client-key=""           Path to PEM file that contains the private key for client auth when connecting to Elasticsearch.
+      --insecure                Skip SSL verification when connecting to Elasticsearch.
       --threads=2               Number of concurrent http requests to Elasticsearch.
       --version                 Show application version.
 ```

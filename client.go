@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 
 	elasticsearch "github.com/elastic/go-elasticsearch/v7"
 )
@@ -15,12 +16,12 @@ type Client struct {
 }
 
 func NewClient(addresses []string, repository string, tlsClientConfig *tls.Config) (*Client, error) {
-	cfg := elasticsearch.Config{
-		Addresses: addresses,
-		Transport: &http.Transport{
-			TLSClientConfig: tlsClientConfig,
-		},
-	}
+	cfg := newElasticsearchConfig(
+		addresses,
+		tlsClientConfig,
+		os.Getenv("OPENSEARCH_USER"),
+		os.Getenv("OPENSEARCH_PASSWORD"),
+	)
 
 	es, err := elasticsearch.NewClient(cfg)
 	if err != nil {
@@ -29,6 +30,17 @@ func NewClient(addresses []string, repository string, tlsClientConfig *tls.Confi
 
 	return &Client{es, repository}, nil
 
+}
+
+func newElasticsearchConfig(addresses []string, tlsClientConfig *tls.Config, username, password string) elasticsearch.Config {
+	return elasticsearch.Config{
+		Addresses: addresses,
+		Username:  username,
+		Password:  password,
+		Transport: &http.Transport{
+			TLSClientConfig: tlsClientConfig,
+		},
+	}
 }
 
 func (c *Client) GetSnapshot(s []string) ([]map[string]interface{}, error) {

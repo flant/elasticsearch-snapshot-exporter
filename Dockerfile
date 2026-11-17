@@ -8,7 +8,7 @@ RUN go install -v github.com/prometheus/promu \
     && promu build -v --prefix build
 
 
-FROM debian:buster-slim
+FROM debian:bookworm-slim
 LABEL maintainer="Vasily Maryutenkov <vasily.maryutenkov@flant.com>"
 
 RUN DEBIAN_FRONTEND=noninteractive; apt-get update \
